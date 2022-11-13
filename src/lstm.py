@@ -4,12 +4,16 @@ from tensorflow import keras
 from keras import layers
 import datetime
 import os
+import json
+import mlflow
+from mlflow.tracking import MlflowClient
 
 
 # Constants
 DATA_PATH = "data/preprocessed"
-TIME_STEPS = 10
 
+with open("src/model_config.json", "r") as f:
+    config = json.load(f)
 
 
 def get_XY(durations, tactus, joint, time_steps):
@@ -36,7 +40,7 @@ Y = np.array([])
 filenames = [f for f in os.listdir(DATA_PATH) if os.path.isfile(os.path.join(DATA_PATH, f))]
 for filename in filenames:
     df = pd.read_csv(os.path.join(DATA_PATH, filename))
-    x, y = get_XY(np.array(df.duration), np.array(df.tactus), np.array(df.joint), TIME_STEPS)
+    x, y = get_XY(np.array(df.duration), np.array(df.tactus), np.array(df.joint), config.get("time_steps", 10))
     if len(X) < 1:
         X = x
         Y = y
@@ -44,27 +48,36 @@ for filename in filenames:
         X = np.concatenate((X, x))
         Y = np.concatenate((Y, y))
 
-    # Concatenate all the other files
-    # ...
-
 
 model = keras.Sequential( 
     [
-        layers.LSTM(units = 20, activation = "relu", input_shape=(TIME_STEPS, 3)),
+        layers.LSTM(units = config.get("hidden_lstm", 10), activation = "tanh", input_shape=(config.get("time_steps", 10), 3)),
         layers.Dense(units = 1, activation = "linear"),
         #layers.Dropout(0.5),
         layers.RepeatVector(2),
-        layers.LSTM(units = 20, activation = "relu", return_sequences=True),
+        layers.LSTM(units = config.get("hidden_lstm", 10), activation = "tanh", return_sequences=True),
         #layers.Dropout(0.5),
         layers.TimeDistributed(layers.Dense(units = 1, activation="sigmoid"))
     ]
 )
 
-# Tensorboard logs dir
-log_dir = "logs/fit/many2many_simple" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-tensorboard_callback = keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
+with mlflow.start_run() as run:
+    run_id = run.info.run_id
 
-model.compile(optimizer='adam', loss='mse')
-model.fit(X, Y, epochs=10, validation_split=0.2, batch_size=10, verbose=1, callbacks=[tensorboard_callback])
+    mlflow.log_param("epochs", config.get("epochs"))
+    mlflow.log_param("batch_size", config.get("batch_size"))
+    mlflow.log_param("time_steps", config.get("time_steps"))
+    mlflow.log_param("hidden_lstm", config.get("hidden_lstm"))
 
+    # Tensorboard logs dir
+    log_dir = "logs/fit/many2many_simple" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    tensorboard_callback = keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
+
+    model.compile(optimizer='adam', loss='mse')
+    history = model.fit(X, Y, 
+                        epochs=config.get("epochs", 10), 
+                        validation_split=0.2, 
+                        batch_size=config.get("batch_size", 5), 
+                        verbose=1, 
+                        callbacks=[tensorboard_callback])
 
