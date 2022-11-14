@@ -3,3 +3,4 @@
 notebooks
 logs
 mlruns
+__pycache__/
