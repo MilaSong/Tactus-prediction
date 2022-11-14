@@ -2,6 +2,6 @@
     "batch_size": 30,
     "epochs": 10,
     "learning_rate": 1e-3,
-    "time_steps": 40,
+    "time_steps": 50,
     "hidden_lstm": 40
 }

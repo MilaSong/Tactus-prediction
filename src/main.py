@@ -10,11 +10,12 @@ import mlflow
 import mlflow.keras
 from mlflow.tracking import MlflowClient
 import tensorflow as tf
+from bilstm import BiLSTMModel
 from lstm import LSTMModel
-
-gpus = tf.config.experimental.list_physical_devices('GPU')
-for gpu in gpus:
-    tf.config.experimental.set_memory_growth(gpu, True)
+from lstm_attention import LSTMAttModel
+from rnn_attention import RNNAttModel
+from rnn import RNNModel
+from keras.utils.vis_utils import plot_model
 
 
 # Constants
@@ -59,7 +60,9 @@ def get_data(filenames):
     return X, Y
 
 
-model = LSTMModel()
+model = LSTMAttModel()
+model.build(input_shape=(1, config.get("time_steps", 10), 3))
+plot_model(model.model, to_file=f"resources/{model.model_name.lower()}_structure.png", show_shapes=True, show_layer_names=True)
 
 with mlflow.start_run() as run:
     run_id = run.info.run_id
@@ -73,6 +76,7 @@ with mlflow.start_run() as run:
     mlflow.log_param("batch_size", config.get("batch_size"))
     mlflow.log_param("time_steps", config.get("time_steps"))
     mlflow.log_param("hidden_lstm", config.get("hidden_lstm"))
+    mlflow.log_param("model_name", model.model_name)
 
     # Tensorboard logs dir
     log_dir = "logs/fit/many2many_simple" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -80,7 +84,7 @@ with mlflow.start_run() as run:
     
     opt = keras.optimizers.Adam(config.get("learning_rate"), 1e-3)
     model.compile(optimizer=opt, loss='mse', metrics=[keras.metrics.RootMeanSquaredError(), "mean_absolute_error"])
-    mlflow.keras.autolog()
+    mlflow.tensorflow.autolog()
     history = model.fit(trainX, trainY, 
                         epochs=config.get("epochs", 10), 
                         validation_split=0.2, 
