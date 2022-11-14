@@ -1,6 +1,0 @@
-{
-    "hidden_lstm": 40,
-    "time_steps": 40,
-    "batch_size": 30,
-    "epochs": 10
-}
