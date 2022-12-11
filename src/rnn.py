@@ -13,9 +13,9 @@ class RNNModel(tf.keras.Model):
         self.model_name = "RNN"
         self.model = tf.keras.Sequential( 
             [
-                tf.keras.layers.SimpleRNN(units = config.get("hidden_lstm", 10), activation = "tanh", input_shape=(config.get("time_steps", 10), 3)),
+                tf.keras.layers.SimpleRNN(units = config.get("hidden_rnn", 10), activation = "tanh", input_shape=(config.get("time_steps", 10), 3)),
                 #layers.Dropout(0.5),
-                tf.keras.layers.Dense(units = 2, activation="sigmoid")
+                tf.keras.layers.Dense(units = 2, activation="linear")
             ]
         )
 

@@ -15,10 +15,10 @@ class RNNAttModel(tf.keras.Model):
         self.model_name = "RNN_attention"
         self.model = tf.keras.Sequential( 
             [
-                layers.SimpleRNN(units = config.get("hidden_lstm", 10), activation = "tanh", return_sequences=True, input_shape=(config.get("time_steps", 10), 3)),
+                layers.SimpleRNN(units = config.get("hidden_rnn", 10), activation = "tanh", return_sequences=True, input_shape=(config.get("time_steps", 10), 3)),
                 attention(),
                 #layers.Dropout(0.5),
-                layers.Dense(units = 2, activation="sigmoid")
+                layers.Dense(units = 2, activation="linear")
             ]
         )
 

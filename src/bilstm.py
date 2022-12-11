@@ -20,7 +20,7 @@ class BiLSTMModel(tf.keras.Model):
                 layers.RepeatVector(2),
                 layers.Bidirectional(layers.LSTM(units = config.get("hidden_lstm", 10), activation = "tanh", return_sequences=True)),
                 #layers.Dropout(0.5),
-                layers.TimeDistributed(layers.Dense(units = 1, activation="sigmoid"))
+                layers.TimeDistributed(layers.Dense(units = 1, activation="linear"))
             ]
         )
 

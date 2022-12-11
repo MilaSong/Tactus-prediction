@@ -20,7 +20,7 @@ class LSTMAttModel(tf.keras.Model):
                 layers.Dense(units = 1, activation = "linear"),
                 layers.RepeatVector(2),
                 layers.LSTM(units = config.get("hidden_lstm", 10), activation = "tanh", return_sequences=True),
-                layers.TimeDistributed(layers.Dense(units = 1, activation="sigmoid"))
+                layers.TimeDistributed(layers.Dense(units = 1, activation="linear"))
             ]
         )
 

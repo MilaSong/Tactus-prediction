@@ -16,6 +16,7 @@ from lstm_attention import LSTMAttModel
 from rnn_attention import RNNAttModel
 from rnn import RNNModel
 from keras.utils.vis_utils import plot_model
+from sklearn.metrics import accuracy_score, precision_score, recall_score
 
 
 # Constants
@@ -26,7 +27,7 @@ with open(CONFIG_PATH, "r") as f:
     config = json.load(f)
 
 
-def get_XY(durations, tactus, joint, time_steps):
+def _get_XY(durations, tactus, joint, time_steps):
 
     j = [np.arange(0, x+1) for x in np.arange(len(durations))[:(time_steps-1)]]
     k = [np.arange(x, x + time_steps) for x in np.arange(len(durations))[:-(time_steps)]]
@@ -44,13 +45,35 @@ def get_XY(durations, tactus, joint, time_steps):
 
     return X, Y
 
+def get_XY(df):
+    time_steps = config.get("time_steps", 10)
+    data = df[['duration', 'tactus', 'joint']].to_numpy()
+    data[:,2][data[:,2] > 1] = 1
+    data[:,1][data[:,1] > 1] = 1
+    # cut into time since last
+    data[:,0] = [0]+[data[i,0]-data[i-1,0] for i in range(1, len(data))]
+
+    # add padding
+    data = [0] + np.concatenate((np.zeros((time_steps, 3)), data))
+
+    batch_data_X = []
+    batch_data_Y = []
+    # binnify
+    for i in range(time_steps, len(data)):
+        batch_data_X.append(np.array(data[i-time_steps:i,:], dtype=float).reshape((config.get("time_steps"), 3)))
+        batch_data_Y.append(np.array(data[i,1:], dtype=float).reshape(2))
+
+    return (np.array(batch_data_X), np.array(batch_data_Y))
+
+
 
 def get_data(filenames):
     X = np.array([])
     Y = np.array([])
     for filename in filenames:
         df = pd.read_csv(os.path.join(DATA_PATH, filename))
-        x, y = get_XY(np.array(df.duration), np.array(df.tactus), np.array(df.joint), config.get("time_steps", 10))
+        #x, y = get_XY(np.array(df.duration), np.array(df.tactus), np.array(df.joint), config.get("time_steps", 10))
+        x, y = get_XY(df)
         if len(X) < 1:
             X = x
             Y = y
@@ -60,7 +83,17 @@ def get_data(filenames):
     return X, Y
 
 
-model = LSTMAttModel()
+def calc_metrics(xtrue1, xtrue2, xpred1, xpred2):
+    acc1 = accuracy_score(xtrue1, xpred1)
+    acc2 = accuracy_score(xtrue2, xpred2)
+    prec1 = precision_score(xtrue1, xpred1, average='weighted', zero_division=0)
+    prec2 = precision_score(xtrue2, xpred2, average='weighted', zero_division=0)
+    recall1 = recall_score(xtrue1, xpred1, average='weighted', zero_division=0)
+    recall2 = recall_score(xtrue2, xpred2, average='weighted', zero_division=0)
+    return acc1, acc2, prec1, prec2, recall1, recall2
+
+
+model = LSTMModel()
 model.build(input_shape=(1, config.get("time_steps", 10), 3))
 plot_model(model.model, to_file=f"resources/{model.model_name.lower()}_structure.png", show_shapes=True, show_layer_names=True)
 
@@ -76,13 +109,13 @@ with mlflow.start_run() as run:
     mlflow.log_param("batch_size", config.get("batch_size"))
     mlflow.log_param("time_steps", config.get("time_steps"))
     mlflow.log_param("hidden_lstm", config.get("hidden_lstm"))
-    mlflow.log_param("model_name", model.model_name)
+    mlflow.log_param("model_name", "sigmoidLSTM")
 
     # Tensorboard logs dir
     log_dir = "logs/fit/many2many_simple" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     tensorboard_callback = keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
     
-    opt = keras.optimizers.Adam(config.get("learning_rate"), 1e-3)
+    opt = keras.optimizers.Adam(config.get("learning_rate"))
     model.compile(optimizer=opt, loss='mse', metrics=[keras.metrics.RootMeanSquaredError(), "mean_absolute_error"])
     mlflow.tensorflow.autolog()
     history = model.fit(trainX, trainY, 
@@ -93,4 +126,40 @@ with mlflow.start_run() as run:
                         callbacks=[tensorboard_callback])
 
     score = model.evaluate(testX, testY, verbose=0)
+    mlflow.log_metric("test_mse", score[0])
+    mlflow.log_metric("test_rmse", score[1])
+    mlflow.log_metric("test_mae", score[2])
+
+    # Prediction
+    predicted = model.predict(testX).round().reshape(-1, 2)
+
+    predicted1 = predicted[:, 0]
+    predicted2 = predicted[:, 1]
+
+    true1 = testY[:, 0]
+    true2 = testY[:, 1]
+
+    acc1, acc2, prec1, prec2, recall1, recall2 = calc_metrics(true1, true2, predicted1, predicted2)
+
+    print(f"Accracy 1: {acc1}")
+    print(f"Accuracy 2: {acc2}")
+    print(f"Precision 1: {prec1}")
+    print(f"Precision 2: {prec2}")
+    print(f"Recall 1: {recall1}")
+    print(f"Recall 2: {recall2}")
+
+    mlflow.log_metric("accuracy1", acc1)
+    mlflow.log_metric("accuracy2", acc2)
+    mlflow.log_metric("precision1", prec1)
+    mlflow.log_metric("precision2", prec2)
+    mlflow.log_metric("recall1", recall1)
+    mlflow.log_metric("recall2", recall2)
+
+    mlflow.log_metric("sum_pred1", sum(predicted1))
+    mlflow.log_metric("sum_pred2", sum(predicted2))
+
+    mlflow.log_metric("sum_true1", sum(true1))
+    mlflow.log_metric("sum_true2", sum(true2))
+
+    
 
